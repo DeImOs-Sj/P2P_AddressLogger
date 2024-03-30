@@ -72,6 +72,13 @@ const Navbar = () => {
           >
          P2PChart
           </Link>
+             <a
+            href="https://github.com/DeImOs-Sj/P2P_AddressLogger"
+            className="text-foreground transition-colors hover:text-foreground"
+          >
+         Github
+          </a>
+          
         </nav>
         <Sheet>
           <SheetTrigger asChild>
