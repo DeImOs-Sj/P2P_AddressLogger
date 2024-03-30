@@ -9,25 +9,13 @@ This project implements a P2P Address Logger on Avail DA, a decentralized networ
 
 **Project Setup**
 
-1. **Terminal 1: Node**
-
-   ```
-   cd node && ./target/release/data-avail --dev
-   ```
-
-2. **Terminal 2: Bootstrap LC**
-
-    ```
-   cd boostrap && ./target/release/avail-light-bootstrap
-    ```
-
-3. **Terminal 3: LC Node 1**
+1. **Terminal 1: LC Node 1**
 
    ```
    cd light && ./target/release/avail-light
    ```
 
-4. **Terminal 4: LC Node 2**
+2. **Terminal 2: LC Node 2**
 
    ```
    cd light
