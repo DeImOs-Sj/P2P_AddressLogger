@@ -37,5 +37,12 @@ This project implements a P2P Address Logger on Avail DA, a decentralized networ
    # Run LC
    ./target/release/avail-light --config myconfig2.yaml
    ```
-    
+
+    **SnapShots**
+
+   
+   <img src="snapshots/2.jpeg" alt="Creating_peerID" width="800px">
+   
+   **Getting peer Ids of *Avail* Light Nodes**
+
 
