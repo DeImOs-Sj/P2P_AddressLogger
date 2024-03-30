@@ -124,7 +124,7 @@ export function Dashboard() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Peer Public key </TableHead>
                     <TableHead className="hidden xl:table-column">
                       Type
                     </TableHead>
@@ -134,16 +134,16 @@ export function Dashboard() {
                     <TableHead className="hidden xl:table-column">
                       Date
                     </TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">PeerId</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   <TableRow>
                     <TableCell>
-                      <div className="font-medium">Liam Johnson</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
+                      <div className="font-medium">f5c6ba6bc3f516767c2aca7a0726b5199a2f656ae78a2b95acecd828ce2</div>
+                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
                         liam@example.com
-                      </div>
+                      </div> */}
                     </TableCell>
                     <TableCell className="hidden xl:table-column">
                       Sale
@@ -156,14 +156,14 @@ export function Dashboard() {
                     <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
                       2023-06-23
                     </TableCell>
-                    <TableCell className="text-right">$250.00</TableCell>
+                    <TableCell className="text-right">1</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>
-                      <div className="font-medium">Olivia Smith</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
+                      <div className="font-medium">a1c6ba363gdfc3f516763v2aca7a0726b5199a2f656ae78a2b95acecd82</div>
+                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
                         olivia@example.com
-                      </div>
+                      </div> */}
                     </TableCell>
                     <TableCell className="hidden xl:table-column">
                       Refund
@@ -176,14 +176,14 @@ export function Dashboard() {
                     <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
                       2023-06-24
                     </TableCell>
-                    <TableCell className="text-right">$150.00</TableCell>
+                    <TableCell className="text-right">2</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>
-                      <div className="font-medium">Noah Williams</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
+                      <div className="font-medium">wo4iruj0wejf0982u37a0726b519fsdsdf9a2f656asdfdsfe78a2b95ace</div>
+                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
                         noah@example.com
-                      </div>
+                      </div> */}
                     </TableCell>
                     <TableCell className="hidden xl:table-column">
                       Subscription
@@ -196,14 +196,14 @@ export function Dashboard() {
                     <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
                       2023-06-25
                     </TableCell>
-                    <TableCell className="text-right">$350.00</TableCell>
+                    <TableCell className="text-right">3</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>
-                      <div className="font-medium">Emma Brown</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
+                      <div className="font-medium">oi20fcmow37a0726b519fsdsdf9a2f656asdsfe78fsfagowspfmm2b95</div>
+                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
                         emma@example.com
-                      </div>
+                      </div> */}
                     </TableCell>
                     <TableCell className="hidden xl:table-column">
                       Sale
@@ -216,14 +216,14 @@ export function Dashboard() {
                     <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
                       2023-06-26
                     </TableCell>
-                    <TableCell className="text-right">$450.00</TableCell>
+                    <TableCell className="text-right">4</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>
-                      <div className="font-medium">Liam Johnson</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
+                      <div className="font-medium">eiposejp3qr0mp6b519fsdsdf9a2f656asdsfe78fsfagowspfmm2b3r</div>
+                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
                         liam@example.com
-                      </div>
+                      </div> */}
                     </TableCell>
                     <TableCell className="hidden xl:table-column">
                       Sale
@@ -236,7 +236,7 @@ export function Dashboard() {
                     <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
                       2023-06-27
                     </TableCell>
-                    <TableCell className="text-right">$550.00</TableCell>
+                    <TableCell className="text-right">5</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
