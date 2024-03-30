@@ -16,7 +16,10 @@
 //! In case RPC is disabled, RPC calls will be skipped.
 
 use crate::{
-	data::{Database, Key},
+	data::{
+		get_block_header_from_db, is_confidence_in_db, store_block_header_in_db,
+		store_confidence_in_db,
+	},
 	network::{
 		self,
 		rpc::{self, Client as RpcClient},
@@ -34,6 +37,7 @@ use color_eyre::{
 };
 use kate_recovery::{commitments, matrix::Dimensions};
 use mockall::automock;
+use rocksdb::DB;
 use sp_core::blake2_256;
 use std::{
 	ops::Range,
@@ -45,31 +49,26 @@ use tracing::{error, info, warn};
 
 #[async_trait]
 #[automock]
-pub trait Client {
+pub trait SyncClient {
 	async fn get_header_by_block_number(&self, block_number: u32) -> Result<(DaHeader, H256)>;
-	fn is_confidence_stored(&self, block_number: u32) -> Result<bool>;
-	fn store_confidence(&self, count: u32, block_number: u32) -> Result<()>;
+	fn is_confidence_in_db(&self, block_number: u32) -> Result<bool>;
+	fn store_confidence_in_db(&self, count: u32, block_number: u32) -> Result<()>;
 }
-
 #[derive(Clone)]
-pub struct SyncClient<T: Database + Sync> {
-	db: T,
+struct SyncClientImpl {
+	db: Arc<DB>,
 	rpc_client: RpcClient,
 }
 
-impl<T: Database + Sync> SyncClient<T> {
-	pub fn new(db: T, rpc_client: RpcClient) -> Self {
-		SyncClient { db, rpc_client }
-	}
+pub fn new(db: Arc<DB>, rpc_client: RpcClient) -> impl SyncClient {
+	SyncClientImpl { db, rpc_client }
 }
 
 #[async_trait]
-impl<T: Database + Sync> Client for SyncClient<T> {
+impl SyncClient for SyncClientImpl {
 	async fn get_header_by_block_number(&self, block_number: u32) -> Result<(DaHeader, H256)> {
-		if let Some(header) = self
-			.db
-			.get(Key::BlockHeader(block_number))
-			.wrap_err("Sync Client failed to get Block Header from the storage")?
+		if let Some(header) = get_block_header_from_db(self.db.clone(), block_number)
+			.wrap_err("Failed to get block header from the DB")?
 		{
 			let hash: H256 = Encode::using_encoded(&header, blake2_256).into();
 			return Ok((header, hash));
@@ -79,38 +78,31 @@ impl<T: Database + Sync> Client for SyncClient<T> {
 			.rpc_client
 			.get_header_by_block_number(block_number)
 			.await
-			.wrap_err_with(|| {
-				format!(
-					"Sync Client failed to get Block {block_number:#?} by Block Number from storage",
-				)
-			}) {
+			.wrap_err_with(|| format!("Failed to get block {:#?} by block number", block_number))
+		{
 			Ok(value) => value,
 			Err(error) => return Err(error),
 		};
 
-		self.db
-			.put(Key::BlockHeader(block_number), header.clone())
-			.wrap_err("Sync Client failed to store Block Header")?;
+		store_block_header_in_db(self.db.clone(), block_number, &header)
+			.wrap_err("Failed to store block header in DB")?;
 
 		Ok((header, hash))
 	}
 
-	fn is_confidence_stored(&self, block_number: u32) -> Result<bool> {
-		self.db
-			.get(Key::VerifiedCellCount(block_number))
-			.wrap_err("Sync Client failed to check if Confidence Factor is stored")
-			.map(|c: Option<u32>| c.is_some())
+	fn is_confidence_in_db(&self, block_number: u32) -> Result<bool> {
+		is_confidence_in_db(self.db.clone(), block_number)
+			.wrap_err("Failed to check if confidence is in DB")
 	}
 
-	fn store_confidence(&self, count: u32, block_number: u32) -> Result<()> {
-		self.db
-			.put(Key::VerifiedCellCount(block_number), count)
-			.wrap_err("Sync Client failed to store Confidence Factor")
+	fn store_confidence_in_db(&self, count: u32, block_number: u32) -> Result<()> {
+		store_confidence_in_db(self.db.clone(), block_number, count)
+			.wrap_err("Failed to store confidence in DB")
 	}
 }
 
 async fn process_block(
-	client: &impl Client,
+	sync_client: &impl SyncClient,
 	network_client: &impl network::Client,
 	header: DaHeader,
 	header_hash: H256,
@@ -150,7 +142,9 @@ async fn process_block(
 	}
 
 	// write confidence factor into on-disk database
-	client.store_confidence(fetched.len().try_into()?, block_number)?;
+	sync_client
+		.store_confidence_in_db(fetched.len().try_into()?, block_number)
+		.wrap_err("Failed to store confidence in DB")?;
 
 	let confidence = Some(calculate_confidence(fetched.len() as u32));
 	let client_msg =
@@ -172,7 +166,7 @@ async fn process_block(
 /// * `end_block` - Sync end block
 /// * `block_verified_sender` - Optional channel to send verified blocks
 pub async fn run(
-	client: impl Client,
+	sync_client: impl SyncClient,
 	network_client: impl network::Client,
 	cfg: SyncClientConfig,
 	sync_range: Range<u32>,
@@ -192,7 +186,7 @@ pub async fn run(
 	for block_number in sync_range {
 		// TODO: This is still an ambiguous check since data fetch can fail.
 		// We should write block status in DB explicitly.
-		match client.is_confidence_stored(block_number) {
+		match sync_client.is_confidence_in_db(block_number) {
 			Ok(false) => (),
 			Ok(true) => continue,
 			Err(error) => {
@@ -202,7 +196,8 @@ pub async fn run(
 			},
 		};
 
-		let (header, header_hash) = match client.get_header_by_block_number(block_number).await {
+		let (header, header_hash) = match sync_client.get_header_by_block_number(block_number).await
+		{
 			Ok(value) => value,
 			Err(error) => {
 				error!(block_number, "Cannot process block: {error:#}");
@@ -220,7 +215,7 @@ pub async fn run(
 		// TODO: Should we handle unprocessed blocks differently?
 		let block_verified_sender = block_verified_sender.clone();
 		if let Err(error) = process_block(
-			&client,
+			&sync_client,
 			&network_client,
 			header,
 			header_hash,
@@ -251,8 +246,8 @@ mod tests {
 	use avail_subxt::{
 		api::runtime_types::avail_core::{
 			data_lookup::compact::CompactDataLookup,
-			header::extension::{v3::HeaderExtension, HeaderExtension::V3},
-			kate_commitment::v3::KateCommitment,
+			header::extension::{v1::HeaderExtension, HeaderExtension::V1},
+			kate_commitment::v1::KateCommitment,
 		},
 		config::substrate::Digest,
 	};
@@ -272,7 +267,7 @@ mod tests {
 			)
 			.into(),
 			digest: Digest { logs: vec![] },
-			extension: V3(HeaderExtension {
+			extension: V1(HeaderExtension {
 				commitment: KateCommitment {
 					rows: 1,
 					cols: 4,
@@ -303,7 +298,7 @@ mod tests {
 		let mut cfg = SyncClientConfig::from(&RuntimeConfig::default());
 		cfg.disable_rpc = true;
 		let mut mock_network_client = network::MockClient::new();
-		let mut mock_client = MockClient::new();
+		let mut mock_client = MockSyncClient::new();
 		let header = default_header();
 		let header_hash: H256 =
 			hex!("3767f8955d6f7306b1e55701b6316fa1163daa8d4cffdb05c3b25db5f5da1723").into();
@@ -367,11 +362,11 @@ mod tests {
 				Box::pin(async move { Ok((fetched, unfetched, stats)) })
 			});
 		mock_client
-			.expect_is_confidence_stored()
+			.expect_is_confidence_in_db()
 			.with(eq(2))
 			.returning(|_| Ok(true));
 		mock_client
-			.expect_store_confidence()
+			.expect_store_confidence_in_db()
 			.withf(move |_, block_number| *block_number == 2)
 			.returning(move |_, _| Ok(()));
 		process_block(
@@ -391,7 +386,7 @@ mod tests {
 		let (block_tx, _) = broadcast::channel::<types::BlockVerified>(10);
 		let cfg = SyncClientConfig::from(&RuntimeConfig::default());
 		let mut mock_network_client = network::MockClient::new();
-		let mut mock_client = MockClient::new();
+		let mut mock_client = MockSyncClient::new();
 		let header = default_header();
 		let header_hash: H256 =
 			hex!("3767f8955d6f7306b1e55701b6316fa1163daa8d4cffdb05c3b25db5f5da1723").into();
@@ -457,7 +452,7 @@ mod tests {
 			});
 
 		mock_client
-			.expect_store_confidence()
+			.expect_store_confidence_in_db()
 			.withf(move |_, block_number| *block_number == 2)
 			.returning(move |_, _| Ok(()));
 		process_block(

@@ -4,6 +4,7 @@ use codec::Decode;
 use color_eyre::{eyre::eyre, Report, Result};
 use kate_recovery::matrix::{Dimensions, Position};
 use rand::{seq::SliceRandom, thread_rng, Rng};
+use rocksdb::DB;
 use serde::{de, Deserialize};
 use sp_core::bytes::from_hex;
 use std::{
@@ -18,7 +19,6 @@ use tokio::{
 use tracing::{debug, info};
 
 use crate::{
-	data::Database,
 	network::rpc,
 	types::{GrandpaJustification, RetryConfig, State},
 };
@@ -201,13 +201,13 @@ impl<'a> Iterator for NodesIterator<'a> {
 	}
 }
 
-pub async fn init<T: Database>(
-	db: T,
+pub async fn init(
+	db: Arc<DB>,
 	state: Arc<Mutex<State>>,
 	nodes: &[String],
 	genesis_hash: &str,
 	retry_config: RetryConfig,
-) -> Result<(Client, broadcast::Sender<Event>, SubscriptionLoop<T>)> {
+) -> Result<(Client, broadcast::Sender<Event>, SubscriptionLoop)> {
 	let rpc_client =
 		Client::new(state.clone(), Nodes::new(nodes), genesis_hash, retry_config).await?;
 	// create output channel for RPC Subscription Events

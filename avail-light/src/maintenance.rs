@@ -1,7 +1,7 @@
 use color_eyre::{eyre::WrapErr, Result};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::{
 	network::p2p::Client as P2pClient,
@@ -15,7 +15,6 @@ pub struct StaticConfigParams {
 	pub block_confidence_treshold: f64,
 	pub replication_factor: u16,
 	pub query_timeout: u32,
-	pub pruning_interval: u32,
 }
 
 pub async fn process_block(
@@ -24,14 +23,6 @@ pub async fn process_block(
 	static_config_params: StaticConfigParams,
 	metrics: &Arc<impl Metrics>,
 ) -> Result<()> {
-	if block_number % static_config_params.pruning_interval == 0 {
-		info!(block_number, "Pruning...");
-		match p2p_client.prune_expired_records().await {
-			Ok(pruned) => info!(block_number, pruned, "Pruning finished"),
-			Err(error) => error!(block_number, "Pruning failed: {error:#}"),
-		}
-	}
-
 	p2p_client
 		.shrink_kademlia_map()
 		.await
@@ -42,25 +33,15 @@ pub async fn process_block(
 		.await
 		.wrap_err("Unable to get Kademlia map size")?;
 
-	// Get last confirmed external multiaddress
-	if let Ok(multiaddrs) = p2p_client.get_multiaddress_and_ip().await {
-		debug!("Confirmed external multiaddresses: {:?}", multiaddrs);
-		if let Some(last_confirmed_ma) = multiaddrs.last() {
-			metrics
-				.set_multiaddress(last_confirmed_ma.to_string())
-				.await;
-		}
+	if let Ok((multiaddr, ip)) = p2p_client.get_multiaddress_and_ip().await {
+		metrics.set_multiaddress(multiaddr).await;
+		metrics.set_ip(ip).await;
 	}
 
 	let peers_num = p2p_client.count_dht_entries().await?;
-	info!("Number of connected peers: {peers_num}");
+	let peers_num_metric = MetricValue::KadRoutingPeerNum(peers_num);
 
-	let connected_peers = p2p_client.list_connected_peers().await?;
-	debug!("Connected peers: {:?}", connected_peers);
-
-	let peers_num_metric = MetricValue::ConnectedPeersNum(peers_num);
 	metrics.record(peers_num_metric).await?;
-
 	metrics
 		.record(MetricValue::BlockConfidenceTreshold(
 			static_config_params.block_confidence_treshold,

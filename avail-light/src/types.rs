@@ -64,21 +64,12 @@ pub struct CliOpts {
 	/// P2P port
 	#[arg(short, long)]
 	pub port: Option<u16>,
-	/// Enable websocket transport
-	#[arg(long, value_name = "ws_transport_enable")]
-	pub ws_transport_enable: bool,
 	/// Log level
 	#[arg(long)]
 	pub verbosity: Option<LogLevel>,
 	/// Avail secret seed phrase password
 	#[arg(long)]
 	pub avail_passphrase: Option<String>,
-	/// Seed string for libp2p keypair generation
-	#[arg(long)]
-	pub seed: Option<String>,
-	/// ed25519 private key for libp2p keypair generation
-	#[arg(long)]
-	pub private_key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -334,7 +325,6 @@ pub struct RuntimeConfig {
 	pub secret_key: Option<SecretKey>,
 	/// P2P service port (default: 37000).
 	pub port: u16,
-	pub ws_transport_enable: bool,
 	/// Configures AutoNAT behaviour to reject probes as a server for clients that are observed at a non-global ip address (default: false)
 	pub autonat_only_global_ips: bool,
 	/// AutoNat throttle period for re-using a peer as server for a dial-request. (default: 1 sec)
@@ -414,10 +404,8 @@ pub struct RuntimeConfig {
 	pub per_connection_event_buffer_size: usize,
 	pub dial_concurrency_factor: u8,
 	/// Sets the timeout for a single Kademlia query. (default: 60s).
-	pub store_pruning_interval: u32,
-	/// Sets the allowed level of parallelism for iterative Kademlia queries. (default: 3).
 	pub query_timeout: u32,
-	/// Sets the Kademlia record store pruning interval in blocks (default: 180).
+	/// Sets the allowed level of parallelism for iterative Kademlia queries. (default: 3).
 	pub query_parallelism: u16,
 	/// Sets the Kademlia caching strategy to use for successful lookups. (default: 1).
 	/// If set to 0, caching is disabled.
@@ -587,7 +575,6 @@ impl From<&RuntimeConfig> for LibP2PConfig {
 /// Kademlia configuration (see [RuntimeConfig] for details)
 #[derive(Clone)]
 pub struct KademliaConfig {
-	pub kad_record_ttl: Duration,
 	pub record_replication_factor: NonZeroUsize,
 	pub record_replication_interval: Option<Duration>,
 	pub publication_interval: Option<Duration>,
@@ -604,7 +591,6 @@ pub struct KademliaConfig {
 impl From<&RuntimeConfig> for KademliaConfig {
 	fn from(val: &RuntimeConfig) -> Self {
 		Self {
-			kad_record_ttl: Duration::from_secs(val.kad_record_ttl),
 			record_replication_factor: std::num::NonZeroUsize::new(val.replication_factor as usize)
 				.expect("Invalid replication factor"),
 			record_replication_interval: Some(Duration::from_secs(val.replication_interval.into())),
@@ -757,7 +743,6 @@ impl Default for RuntimeConfig {
 			http_server_host: "127.0.0.1".to_owned(),
 			http_server_port: 7000,
 			port: 37000,
-			ws_transport_enable: false,
 			secret_key: None,
 			autonat_only_global_ips: false,
 			autonat_refresh_interval: 360,
@@ -793,7 +778,6 @@ impl Default for RuntimeConfig {
 			task_command_buffer_size: 32,
 			per_connection_event_buffer_size: 7,
 			dial_concurrency_factor: 8,
-			store_pruning_interval: 180,
 			query_timeout: 10,
 			query_parallelism: 3,
 			caching_max_peers: 1,
@@ -805,10 +789,10 @@ impl Default for RuntimeConfig {
 			crawl: crate::crawl_client::CrawlConfig::default(),
 			origin: "external".to_string(),
 			operation_mode: KademliaMode::Client,
-			retry_config: RetryConfig::Fibonacci(FibonacciConfig {
-				base: 1,
-				max_delay: 10,
-				retries: 6,
+			retry_config: RetryConfig::Exponential(ExponentialConfig {
+				base: 10,
+				max_delay: 4000,
+				retries: 3,
 			}),
 		}
 	}
@@ -817,6 +801,7 @@ impl Default for RuntimeConfig {
 #[derive(Clone)]
 pub enum Network {
 	Local,
+	Goldberg,
 }
 
 impl FromStr for Network {
@@ -825,7 +810,8 @@ impl FromStr for Network {
 	fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
 		match s {
 			"local" => Ok(Network::Local),
-			_ => Err("valid values are: local".to_string()),
+			"goldberg" => Ok(Network::Goldberg),
+			_ => Err("valid values are: local, biryani, goldberg".to_string()),
 		}
 	}
 }
@@ -834,30 +820,35 @@ impl Network {
 	fn peer_id(&self) -> &str {
 		match self {
 			Network::Local => "12D3KooWStAKPADXqJ7cngPYXd2mSANpdgh1xQ34aouufHA2xShz",
+			Network::Goldberg => "12D3KooWBkLsNGaD3SpMaRWtAmWVuiZg1afdNSPbtJ8M8r9ArGRT",
 		}
 	}
 
 	fn multiaddr(&self) -> &str {
 		match self {
 			Network::Local => "/ip4/127.0.0.1/tcp/39000",
+			Network::Goldberg => "/dns/bootnode.1.lightclient.goldberg.avail.tools/tcp/37000",
 		}
 	}
 
 	fn full_node_ws(&self) -> &str {
 		match self {
 			Network::Local => "ws://127.0.0.1:9944",
+			Network::Goldberg => "wss://goldberg.avail.tools:443/ws",
 		}
 	}
 
 	fn ot_collector_endpoint(&self) -> &str {
 		match self {
 			Network::Local => "http://127.0.0.1:4317",
+			Network::Goldberg => "http://otel.lightclient.goldberg.avail.tools:4317",
 		}
 	}
 
 	fn genesis_hash(&self) -> &str {
 		match self {
 			Network::Local => "DEV",
+			Network::Goldberg => "6f09966420b2608d1947ccfb0f2a362450d1fc7fd902c29b67c906eaa965a7ae",
 		}
 	}
 }
@@ -936,18 +927,6 @@ impl RuntimeConfig {
 		}
 		self.sync_finality_enable |= opts.finality_sync_enable;
 		self.app_id = opts.app_id.or(self.app_id);
-		self.ws_transport_enable |= opts.ws_transport_enable;
-		if let Some(secret_key) = &opts.private_key {
-			self.secret_key = Some(SecretKey::Key {
-				key: secret_key.to_string(),
-			});
-		}
-
-		if let Some(seed) = &opts.seed {
-			self.secret_key = Some(SecretKey::Seed {
-				seed: seed.to_string(),
-			})
-		}
 
 		Ok(())
 	}
@@ -1051,6 +1030,13 @@ impl OptionBlockRange for Option<BlockRange> {
 	}
 }
 
+#[derive(Debug, Decode, Encode)]
+pub struct FinalitySyncCheckpoint {
+	pub number: u32,
+	pub set_id: u64,
+	pub validator_set: Vec<ed25519::Public>,
+}
+
 #[derive(Debug, Encode)]
 pub enum SignerMessage {
 	_DummyMessage(u32),
@@ -1096,14 +1082,5 @@ impl<'de> Deserialize<'de> for GrandpaJustification {
 		let encoded = bytes::deserialize(deserializer)?;
 		Self::decode(&mut &encoded[..])
 			.map_err(|codec_err| D::Error::custom(format!("Invalid decoding: {:?}", codec_err)))
-	}
-}
-
-pub struct TimeToLive(pub Duration);
-
-impl TimeToLive {
-	/// Expiry at instant from now
-	pub fn expires(&self) -> Option<Instant> {
-		Instant::now().checked_add(self.0)
 	}
 }

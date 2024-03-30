@@ -4,12 +4,10 @@ use avail_core::AppId;
 use avail_light::{
 	api,
 	consts::EXPECTED_SYSTEM_VERSION,
-	data::rocks_db::RocksDB,
+	data,
 	maintenance::StaticConfigParams,
 	network::{self, p2p, rpc},
 	shutdown::Controller,
-	sync_client::SyncClient,
-	sync_finality::SyncFinality,
 	telemetry::{self, otlp::MetricAttributes},
 	types::{CliOpts, IdentityConfig, LibP2PConfig, RuntimeConfig, State},
 };
@@ -100,6 +98,7 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	let version = clap::crate_version!();
 	info!("Running Avail light client version: {version}. Role: {client_role}.");
 	info!("Using config: {cfg:?}");
+	// println!("{:?}", cfg.bootstraps);
 	info!("Avail address is: {}", &identity_cfg.avail_address);
 
 	if let Some(error) = parse_error {
@@ -115,8 +114,7 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 		Err(eyre!("Bootstrap node list must not be empty. Either use a '--network' flag or add a list of bootstrap nodes in the configuration file"))?
 	}
 
-	let db =
-		RocksDB::open(&cfg.avail_path).wrap_err("Avail Light could not initialize database")?;
+	let db = data::init_db(&cfg.avail_path).wrap_err("Cannot initialize database")?;
 
 	let cfg_libp2p: LibP2PConfig = (&cfg).into();
 	let (id_keys, peer_id) = p2p::keypair(&cfg_libp2p)?;
@@ -153,20 +151,11 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	// Create sender channel for P2P event loop commands
 	let (p2p_event_loop_sender, p2p_event_loop_receiver) = mpsc::unbounded_channel();
 
-	let p2p_event_loop = p2p::EventLoop::new(
-		cfg_libp2p,
-		&id_keys,
-		cfg.is_fat_client(),
-		cfg.ws_transport_enable,
-		shutdown.clone(),
-	);
+	let p2p_event_loop =
+		p2p::EventLoop::new(cfg_libp2p, &id_keys, cfg.is_fat_client(), shutdown.clone());
 
 	tokio::spawn(
-		shutdown.with_cancel(
-			p2p_event_loop
-				.await
-				.run(ot_metrics.clone(), p2p_event_loop_receiver),
-		),
+		shutdown.with_cancel(p2p_event_loop.run(ot_metrics.clone(), p2p_event_loop_receiver)),
 	);
 
 	let p2p_client = p2p::Client::new(
@@ -176,11 +165,16 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	);
 
 	// Start listening on provided port
+	let port = cfg.port;
 	p2p_client
-		.start_listening(construct_multiaddress(cfg.ws_transport_enable, cfg.port))
+		.start_listening(
+			Multiaddr::empty()
+				.with(Protocol::from(Ipv4Addr::UNSPECIFIED))
+				.with(Protocol::Tcp(port)),
+		)
 		.await
 		.wrap_err("Listening on TCP not to fail.")?;
-	info!("TCP listener started on port {}", cfg.port);
+	info!("TCP listener started on port {port}");
 
 	let p2p_clone = p2p_client.to_owned();
 	let cfg_clone = cfg.to_owned();
@@ -339,7 +333,7 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 		)));
 	}
 
-	let sync_client = SyncClient::new(db.clone(), rpc_client.clone());
+	let sync_client = avail_light::sync_client::new(db.clone(), rpc_client.clone());
 
 	let sync_network_client = network::new(
 		p2p_client.clone(),
@@ -361,7 +355,7 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	}
 
 	if cfg.sync_finality_enable {
-		let sync_finality = SyncFinality::new(db.clone(), rpc_client.clone());
+		let sync_finality = avail_light::sync_finality::new(db.clone(), rpc_client.clone());
 		tokio::task::spawn(shutdown.with_cancel(avail_light::sync_finality::run(
 			sync_finality,
 			shutdown.clone(),
@@ -380,7 +374,6 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 		block_confidence_treshold: cfg.confidence,
 		replication_factor: cfg.replication_factor,
 		query_timeout: cfg.query_timeout,
-		pruning_interval: cfg.store_pruning_interval,
 	};
 
 	tokio::task::spawn(shutdown.with_cancel(avail_light::maintenance::run(
@@ -397,11 +390,11 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	};
 
 	if let Some(partition) = cfg.block_matrix_partition {
-		let fat_client = avail_light::fat_client::new(p2p_client.clone(), rpc_client.clone());
+		let fat_client =
+			avail_light::fat_client::new(db.clone(), p2p_client.clone(), rpc_client.clone());
 
 		tokio::task::spawn(shutdown.with_cancel(avail_light::fat_client::run(
 			fat_client,
-			db.clone(),
 			(&cfg).into(),
 			ot_metrics.clone(),
 			channels,
@@ -409,10 +402,12 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 			shutdown.clone(),
 		)));
 	} else {
+		let light_client = avail_light::light_client::new(db.clone());
+
 		let light_network_client = network::new(p2p_client, rpc_client, pp, cfg.disable_rpc);
 
 		tokio::task::spawn(shutdown.with_cancel(avail_light::light_client::run(
-			db.clone(),
+			light_client,
 			light_network_client,
 			(&cfg).into(),
 			ot_metrics,
@@ -423,18 +418,6 @@ async fn run(shutdown: Controller<String>) -> Result<()> {
 	}
 
 	Ok(())
-}
-
-fn construct_multiaddress(is_websocket: bool, port: u16) -> Multiaddr {
-	let tcp_multiaddress = Multiaddr::empty()
-		.with(Protocol::from(Ipv4Addr::UNSPECIFIED))
-		.with(Protocol::Tcp(port));
-
-	if is_websocket {
-		return tcp_multiaddress.with(Protocol::Ws(std::borrow::Cow::Borrowed("avail-light")));
-	}
-
-	tcp_multiaddress
 }
 
 fn install_panic_hooks(shutdown: Controller<String>) -> Result<()> {
@@ -448,7 +431,7 @@ fn install_panic_hooks(shutdown: Controller<String>) -> Result<()> {
 	eyre_hook.install()?;
 
 	std::panic::set_hook(Box::new(move |panic_info| {
-		// trigger shutdown to stop other tasks if panic occurs
+		// trigger shutdown to stop other tasks if panic occurrs
 		let _ = shutdown.trigger_shutdown("Panic occurred, shuting down".to_string());
 
 		let msg = format!("{}", panic_hook.panic_report(panic_info));

@@ -17,7 +17,7 @@ use self::{
 
 use crate::{
 	api::v2::types::Topic,
-	data::Database,
+	data::{Database, RocksDB},
 	network::rpc::Client,
 	types::{IdentityConfig, RuntimeConfig, State},
 };
@@ -32,12 +32,6 @@ async fn optionally<T>(value: Option<T>) -> Result<T, Rejection> {
 		Some(value) => Ok(value),
 		None => Err(warp::reject::not_found()),
 	}
-}
-
-fn with_db<T: Database + Clone + Send>(
-	db: T,
-) -> impl Filter<Extract = (T,), Error = Infallible> + Clone {
-	warp::any().map(move || db.clone())
 }
 
 fn with_ws_clients(
@@ -68,13 +62,13 @@ fn status_route(
 fn block_route(
 	config: RuntimeConfig,
 	state: Arc<Mutex<State>>,
-	db: impl Database + Clone + Send,
+	db: impl Database,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
 	warp::path!("v2" / "blocks" / u32)
 		.and(warp::get())
 		.and(warp::any().map(move || config.clone()))
 		.and(warp::any().map(move || state.clone()))
-		.and(with_db(db))
+		.and(warp::any().map(move || db.clone()))
 		.then(handlers::block)
 		.map(log_internal_server_error)
 }
@@ -82,13 +76,13 @@ fn block_route(
 fn block_header_route(
 	config: RuntimeConfig,
 	state: Arc<Mutex<State>>,
-	db: impl Database + Clone + Send,
+	db: impl Database,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
 	warp::path!("v2" / "blocks" / u32 / "header")
 		.and(warp::get())
 		.and(warp::any().map(move || config.clone()))
 		.and(warp::any().map(move || state.clone()))
-		.and(with_db(db))
+		.and(warp::any().map(move || db.clone()))
 		.then(handlers::block_header)
 		.map(log_internal_server_error)
 }
@@ -96,14 +90,14 @@ fn block_header_route(
 fn block_data_route(
 	config: RuntimeConfig,
 	state: Arc<Mutex<State>>,
-	db: impl Database + Clone + Send,
+	db: impl Database,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
 	warp::path!("v2" / "blocks" / u32 / "data")
 		.and(warp::get())
 		.and(warp::query::<DataQuery>())
 		.and(warp::any().map(move || config.clone()))
 		.and(warp::any().map(move || state.clone()))
-		.and(with_db(db))
+		.and(warp::any().map(move || db.clone()))
 		.then(handlers::block_data)
 		.map(log_internal_server_error)
 }
@@ -193,7 +187,7 @@ pub fn routes(
 	identity_config: IdentityConfig,
 	rpc_client: Client,
 	ws_clients: WsClients,
-	db: impl Database + Clone + Send,
+	db: RocksDB,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
 	let version = Version {
 		version,
@@ -234,8 +228,7 @@ mod tests {
 			DataField, ErrorCode, SubmitResponse, Subscription, SubscriptionId, Topic, Version,
 			WsClients, WsError, WsResponse,
 		},
-		data::Key,
-		data::{mem_db, Database},
+		data::Database,
 		types::{BlockRange, OptionBlockRange, RuntimeConfig, State},
 	};
 	use async_trait::async_trait;
@@ -243,13 +236,13 @@ mod tests {
 	use avail_subxt::{
 		api::runtime_types::avail_core::{
 			data_lookup::compact::CompactDataLookup,
-			header::extension::{v3, HeaderExtension},
-			kate_commitment::v3::KateCommitment,
+			header::extension::{v2, HeaderExtension},
+			kate_commitment::v2::KateCommitment,
 		},
 		primitives::Header as DaHeader,
 	};
 	use hyper::StatusCode;
-	use kate_recovery::matrix::Partition;
+	use kate_recovery::{com::AppData, matrix::Partition};
 	use std::{
 		collections::HashSet,
 		str::FromStr,
@@ -353,8 +346,7 @@ mod tests {
 			let mut state = state.lock().unwrap();
 			state.latest = latest;
 		}
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_route(config, state, db);
+		let route = super::block_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path(&format!("/v2/blocks/{block_number}"))
@@ -374,9 +366,14 @@ mod tests {
 			state.header_verified.set(10);
 			state.data_verified.set(10);
 		}
-		let db = mem_db::MemoryDB::default();
-		_ = db.put(Key::VerifiedCellCount(10), 4);
-		let route = super::block_route(config, state, db);
+		let route = super::block_route(
+			config,
+			state,
+			MockDatabase {
+				confidence: Some(4),
+				..Default::default()
+			},
+		);
 		let response = warp::test::request()
 			.method("GET")
 			.path("/v2/blocks/10")
@@ -406,8 +403,7 @@ mod tests {
 			..Default::default()
 		}));
 
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_header_route(config, state, db);
+		let route = super::block_header_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path(&format!("/v2/blocks/{block_number}/header"))
@@ -424,8 +420,8 @@ mod tests {
 			latest: 10,
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_header_route(config, state, db);
+
+		let route = super::block_header_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path("/v2/blocks/11/header")
@@ -440,7 +436,7 @@ mod tests {
 			number: 1,
 			state_root: H256::default(),
 			extrinsics_root: H256::default(),
-			extension: HeaderExtension::V3(v3::HeaderExtension {
+			extension: HeaderExtension::V2(v2::HeaderExtension {
 				commitment: KateCommitment::default(),
 				app_lookup: CompactDataLookup {
 					size: 0,
@@ -459,9 +455,11 @@ mod tests {
 			header_verified: Some(BlockRange::init(1)),
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		_ = db.put(Key::BlockHeader(1), header());
-		let route = super::block_header_route(config, state, db);
+		let database = MockDatabase {
+			header: Some(header()),
+			..Default::default()
+		};
+		let route = super::block_header_route(config, state, database);
 		let response = warp::test::request()
 			.method("GET")
 			.path("/v2/blocks/1/header")
@@ -469,7 +467,7 @@ mod tests {
 			.await;
 		assert_eq!(
 			response.body(),
-			r#"{"hash":"0xb4ab92948e78b5e3115d2ce5ff2207e7d713a7fb33f4a9240e413c00954f244b","parent_hash":"0x0000000000000000000000000000000000000000000000000000000000000000","number":1,"state_root":"0x0000000000000000000000000000000000000000000000000000000000000000","extrinsics_root":"0x0000000000000000000000000000000000000000000000000000000000000000","extension":{"rows":0,"cols":0,"data_root":"0x0000000000000000000000000000000000000000000000000000000000000000","commitments":[],"app_lookup":{"size":0,"index":[]}}}"#
+			r#"{"hash":"0xffb84ad27c9d095b0f4790bd168637a6891f962d5a738e2dc7fbdb7a482cce83","parent_hash":"0x0000000000000000000000000000000000000000000000000000000000000000","number":1,"state_root":"0x0000000000000000000000000000000000000000000000000000000000000000","extrinsics_root":"0x0000000000000000000000000000000000000000000000000000000000000000","extension":{"rows":0,"cols":0,"data_root":"0x0000000000000000000000000000000000000000000000000000000000000000","commitments":[],"app_lookup":{"size":0,"index":[]}}}"#
 		);
 	}
 
@@ -493,8 +491,8 @@ mod tests {
 			data_verified: Some(BlockRange::init(8)),
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_data_route(config, state, db);
+
+		let route = super::block_data_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path(&format!("/v2/blocks/{block_number}/data"))
@@ -511,8 +509,8 @@ mod tests {
 			latest: 10,
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_data_route(config, state, db);
+
+		let route = super::block_data_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path("/v2/blocks/11/data")
@@ -534,8 +532,8 @@ mod tests {
 			data_verified: Some(BlockRange::init(5)),
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		let route = super::block_data_route(config, state, db);
+
+		let route = super::block_data_route(config, state, MockDatabase::default());
 		let response = warp::test::request()
 			.method("GET")
 			.path("/v2/blocks/5/data")
@@ -561,10 +559,8 @@ mod tests {
 			data_verified: Some(BlockRange::init(5)),
 			..Default::default()
 		}));
-		let db = mem_db::MemoryDB::default();
-		_ = db.put(
-			Key::AppData(1, 5),
-			vec![vec![
+		let db = MockDatabase {
+			app_data: Some(vec![vec![
 				189, 1, 132, 0, 212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159,
 				214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125, 1,
 				50, 12, 43, 176, 19, 42, 23, 73, 70, 223, 198, 180, 103, 34, 60, 246, 184, 49, 140,
@@ -572,8 +568,10 @@ mod tests {
 				8, 4, 68, 137, 5, 156, 94, 209, 7, 169, 105, 62, 63, 1, 122, 253, 195, 112, 173,
 				239, 21, 73, 163, 240, 106, 109, 131, 0, 4, 0, 4, 29, 1, 20, 116, 101, 115, 116,
 				10,
-			]],
-		);
+			]]),
+			..Default::default()
+		};
+
 		let route = super::block_data_route(config, state, db);
 		let response = warp::test::request()
 			.method("GET")
@@ -615,6 +613,27 @@ mod tests {
 				hash: H256::random(),
 				index: 0,
 			})
+		}
+	}
+
+	#[derive(Clone, Default)]
+	struct MockDatabase {
+		confidence: Option<u32>,
+		header: Option<DaHeader>,
+		app_data: Option<AppData>,
+	}
+
+	impl Database for MockDatabase {
+		fn get_confidence(&self, _: u32) -> color_eyre::Result<Option<u32>> {
+			Ok(self.confidence)
+		}
+
+		fn get_header(&self, _: u32) -> color_eyre::Result<Option<DaHeader>> {
+			Ok(self.header.clone())
+		}
+
+		fn get_data(&self, _app_id: u32, _: u32) -> color_eyre::Result<Option<AppData>> {
+			Ok(self.app_data.clone())
 		}
 	}
 

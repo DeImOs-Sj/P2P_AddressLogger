@@ -1,6 +1,7 @@
-use crate::{data::Database, types::State};
+use crate::types::State;
 
 use self::types::AppDataQuery;
+use rocksdb::DB;
 use std::{
 	convert::Infallible,
 	sync::{Arc, Mutex},
@@ -16,9 +17,7 @@ fn with_state(
 	warp::any().map(move || state.clone())
 }
 
-fn with_db<T: Database + Clone + Send>(
-	db: T,
-) -> impl Filter<Extract = (T,), Error = Infallible> + Clone {
+fn with_db(db: Arc<DB>) -> impl Filter<Extract = (Arc<DB>,), Error = Infallible> + Clone {
 	warp::any().map(move || db.clone())
 }
 
@@ -29,7 +28,7 @@ fn with_app_id(
 }
 
 pub fn routes(
-	db: impl Database + Clone + Send,
+	db: Arc<DB>,
 	app_id: Option<u32>,
 	state: Arc<Mutex<State>>,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
@@ -45,7 +44,6 @@ pub fn routes(
 		.and(with_db(db.clone()))
 		.and(with_state(state.clone()))
 		.map(handlers::confidence);
-
 	let appdata = (warp::path!("v1" / "appdata" / u32))
 		.and(warp::query::<AppDataQuery>())
 		.and(with_db(db.clone()))
@@ -59,5 +57,13 @@ pub fn routes(
 		.and(with_db(db))
 		.map(handlers::status);
 
-	warp::get().and(mode.or(latest_block).or(confidence).or(appdata).or(status))
+	let address_book = warp::path!("v1" / "address_book").map(handlers::address_book);
+
+	warp::get().and(
+		mode.or(latest_block)
+			.or(confidence)
+			.or(appdata)
+			.or(status)
+			.or(address_book),
+	)
 }

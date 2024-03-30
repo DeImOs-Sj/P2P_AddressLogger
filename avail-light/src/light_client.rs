@@ -17,10 +17,13 @@
 //! In case delay is configured, block processing is delayed for configured time.
 //! In case RPC is disabled, RPC calls will be skipped.
 
+use async_trait::async_trait;
 use avail_subxt::{primitives::Header, utils::H256};
 use codec::Encode;
 use color_eyre::{eyre::WrapErr, Result};
 use kate_recovery::{commitments, matrix::Dimensions};
+use mockall::automock;
+use rocksdb::DB;
 use sp_core::blake2_256;
 use std::{
 	sync::{Arc, Mutex},
@@ -29,7 +32,7 @@ use std::{
 use tracing::{error, info};
 
 use crate::{
-	data::{Database, Key},
+	data::{store_block_header_in_db, store_confidence_in_db},
 	network::{
 		self,
 		rpc::{self, Event},
@@ -40,12 +43,40 @@ use crate::{
 	utils::{calculate_confidence, extract_kate},
 };
 
+#[async_trait]
+#[automock]
+pub trait LightClient {
+	fn store_block_header_in_db(&self, header: &Header, block_number: u32) -> Result<()>;
+	fn store_confidence_in_db(&self, count: u32, block_number: u32) -> Result<()>;
+}
+
+#[derive(Clone)]
+struct LightClientImpl {
+	db: Arc<DB>,
+}
+
+pub fn new(db: Arc<DB>) -> impl LightClient {
+	LightClientImpl { db }
+}
+
+#[async_trait]
+impl LightClient for LightClientImpl {
+	fn store_confidence_in_db(&self, count: u32, block_number: u32) -> Result<()> {
+		store_confidence_in_db(self.db.clone(), block_number, count)
+			.wrap_err("Failed to store confidence in DB")
+	}
+	fn store_block_header_in_db(&self, header: &Header, block_number: u32) -> Result<()> {
+		store_block_header_in_db(self.db.clone(), block_number, header)
+			.wrap_err("Failed to store block header in DB")
+	}
+}
+
 pub async fn process_block(
-	db: impl Database,
+	light_client: &impl LightClient,
 	network_client: &impl network::Client,
 	metrics: &Arc<impl Metrics>,
 	cfg: &LightClientConfig,
-	header: Header,
+	header: &Header,
 	received_at: Instant,
 	state: Arc<Mutex<State>>,
 ) -> Result<Option<f64>> {
@@ -55,7 +86,7 @@ pub async fn process_block(
 		.await?;
 
 	let block_number = header.number;
-	let header_hash: H256 = Encode::using_encoded(&header, blake2_256).into();
+	let header_hash: H256 = Encode::using_encoded(header, blake2_256).into();
 
 	info!(
 		{ block_number, block_delay = received_at.elapsed().as_secs()},
@@ -130,8 +161,9 @@ pub async fn process_block(
 	}
 
 	// write confidence factor into on-disk database
-	db.put(Key::VerifiedCellCount(block_number), fetched.len() as u32)
-		.wrap_err("Light Client failed to store Confidence Factor")?;
+	light_client
+		.store_confidence_in_db(fetched.len() as u32, block_number)
+		.wrap_err("Failed to store confidence in DB")?;
 
 	state.lock().unwrap().confidence_achieved.set(block_number);
 
@@ -154,8 +186,9 @@ pub async fn process_block(
 	// another competing thread, which syncs all block headers
 	// in range [0, LATEST], where LATEST = latest block number
 	// when this process started
-	db.put(Key::BlockHeader(block_number), header)
-		.wrap_err("Light Client failed to store Block Header")?;
+	light_client
+		.store_block_header_in_db(header, block_number)
+		.wrap_err("Failed to store block header in DB")?;
 
 	Ok(Some(confidence))
 }
@@ -168,10 +201,10 @@ pub async fn process_block(
 /// * `cfg` - Light client configuration
 /// * `metrics` - Metrics registry
 /// * `state` - Processed blocks state
-/// * `channels` - Communication channels
+/// * `channels` - Communitaction channels
 /// * `shutdown` - Shutdown controller
 pub async fn run(
-	db: impl Database + Clone,
+	light_client: impl LightClient,
 	network_client: impl network::Client,
 	cfg: LightClientConfig,
 	metrics: Arc<impl Metrics>,
@@ -207,11 +240,11 @@ pub async fn run(
 		}
 
 		let process_block_result = process_block(
-			db.clone(),
+			&light_client,
 			&network_client,
 			&metrics,
 			&cfg,
-			header.clone(),
+			&header,
 			received_at,
 			state.clone(),
 		)
@@ -245,7 +278,6 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		data::mem_db,
 		network::rpc::{cell_count_for_confidence, CELL_COUNT_99_99},
 		telemetry,
 		types::RuntimeConfig,
@@ -253,8 +285,8 @@ mod tests {
 	use avail_subxt::{
 		api::runtime_types::avail_core::{
 			data_lookup::compact::CompactDataLookup,
-			header::extension::{v3::HeaderExtension, HeaderExtension::V3},
-			kate_commitment::v3::KateCommitment,
+			header::extension::{v1::HeaderExtension, HeaderExtension::V1},
+			kate_commitment::v1::KateCommitment,
 		},
 		config::substrate::Digest,
 	};
@@ -276,8 +308,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_process_block_with_rpc() {
+		let mut mock_client = MockLightClient::new();
 		let mut mock_network_client = network::MockClient::new();
-		let db = mem_db::MemoryDB::default();
 		let cfg = LightClientConfig::from(&RuntimeConfig::default());
 		let cells_fetched: Vec<Cell> = vec![];
 		let cells_unfetched = [
@@ -298,7 +330,7 @@ mod tests {
 			)
 			.into(),
 			digest: Digest { logs: vec![] },
-			extension: V3(HeaderExtension {
+			extension: V1(HeaderExtension {
 				commitment: KateCommitment {
 					rows: 1,
 					cols: 4,
@@ -337,17 +369,24 @@ mod tests {
 				);
 				Box::pin(async move { Ok((fetched, unfetched, stats)) })
 			});
+		mock_client
+			.expect_store_confidence_in_db()
+			.returning(|_, _| Ok(()));
+		mock_client
+			.expect_store_block_header_in_db()
+			.returning(|_, _| Ok(()));
 
 		let mut mock_metrics = telemetry::MockMetrics::new();
 		mock_metrics.expect_count().returning(|_| ());
 		mock_metrics.expect_record().returning(|_| Ok(()));
 		mock_metrics.expect_set_multiaddress().returning(|_| ());
+		mock_metrics.expect_set_ip().returning(|_| ());
 		process_block(
-			db,
+			&mock_client,
 			&mock_network_client,
 			&Arc::new(mock_metrics),
 			&cfg,
-			header,
+			&header,
 			recv,
 			state,
 		)

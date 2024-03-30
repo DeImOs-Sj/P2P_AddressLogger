@@ -67,7 +67,7 @@ pub enum MetricValue {
 	RPCCallDuration(f64),
 	DHTPutDuration(f64),
 	DHTPutSuccess(f64),
-	ConnectedPeersNum(usize),
+	KadRoutingPeerNum(usize),
 	HealthCheck(),
 	BlockProcessingDelay(f64),
 	PingLatency(f64),
@@ -87,4 +87,5 @@ pub trait Metrics {
 	async fn count(&self, counter: MetricCounter);
 	async fn record(&self, value: MetricValue) -> Result<()>;
 	async fn set_multiaddress(&self, multiaddr: String);
+	async fn set_ip(&self, ip: String);
 }

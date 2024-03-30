@@ -1,3 +1,4 @@
+use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use futures::StreamExt;
 use libp2p::{
@@ -17,6 +18,10 @@ use libp2p::{
 	},
 	upnp, Multiaddr, PeerId, Swarm,
 };
+
+use std::fs::OpenOptions;
+use std::io::Write;
+
 use rand::seq::SliceRandom;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use tokio::{
@@ -29,13 +34,24 @@ use crate::{
 	network::p2p::kad_mem_store::MemoryStore,
 	shutdown::Controller,
 	telemetry::{MetricCounter, MetricValue, Metrics},
-	types::{AgentVersion, IdentifyConfig, KademliaMode, LibP2PConfig, TimeToLive},
+	types::{
+		AgentVersion, CliOpts, IdentifyConfig, KademliaMode, LibP2PConfig, MultiaddrConfig,
+		RuntimeConfig,
+	},
 };
 
 use super::{
 	build_swarm, client::BlockStat, Behaviour, BehaviourEvent, CommandReceiver, EventLoopEntries,
 	QueryChannel, SendableCommand,
 };
+
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct AddressBookData {
+	multiaddr: Vec<MultiaddrConfig>,
+	peer_id: libp2p::PeerId,
+}
 
 // RelayState keeps track of all things relay related
 struct RelayState {
@@ -76,13 +92,6 @@ struct BootstrapState {
 	timer: Interval,
 }
 
-struct EventLoopConfig {
-	// Used for checking protocol version
-	identity_data: IdentifyConfig,
-	is_fat_client: bool,
-	kad_record_ttl: TimeToLive,
-}
-
 pub struct EventLoop {
 	swarm: Swarm<Behaviour>,
 	// Tracking Kademlia events
@@ -91,11 +100,12 @@ pub struct EventLoop {
 	pending_swarm_events: HashMap<PeerId, oneshot::Sender<Result<()>>>,
 	relay: RelayState,
 	bootstrap: BootstrapState,
+	is_fat_client: bool,
 	/// Blocks we monitor for PUT success rate
 	active_blocks: HashMap<u32, BlockStat>,
 	shutdown: Controller<String>,
-
-	event_loop_config: EventLoopConfig,
+	// Used for checking protocol version
+	identity_data: IdentifyConfig,
 }
 
 #[derive(PartialEq, Debug)]
@@ -122,20 +132,18 @@ impl TryFrom<RecordKey> for DHTKey {
 }
 
 impl EventLoop {
-	pub async fn new(
+	pub fn new(
 		cfg: LibP2PConfig,
 		id_keys: &Keypair,
 		is_fat_client: bool,
-		is_ws_transport: bool,
 		shutdown: Controller<String>,
 	) -> Self {
 		let bootstrap_interval = cfg.bootstrap_interval;
+		let kad_mode = cfg.kademlia.kademlia_mode.into();
 		let peer_id = id_keys.public().to_peer_id();
 		let store = MemoryStore::with_config(peer_id, (&cfg).into());
 
-		let swarm = build_swarm(&cfg, id_keys, store, is_ws_transport)
-			.await
-			.expect("Unable to build swarm.");
+		let swarm = build_swarm(&cfg, id_keys, kad_mode, store).expect("Swarm can be built");
 
 		Self {
 			swarm,
@@ -151,13 +159,10 @@ impl EventLoop {
 				is_startup_done: false,
 				timer: interval_at(Instant::now() + bootstrap_interval, bootstrap_interval),
 			},
+			is_fat_client,
 			active_blocks: Default::default(),
 			shutdown,
-			event_loop_config: EventLoopConfig {
-				identity_data: cfg.identify,
-				is_fat_client,
-				kad_record_ttl: TimeToLive(cfg.kademlia.kad_record_ttl),
-			},
+			identity_data: cfg.identify,
 		}
 	}
 
@@ -233,13 +238,11 @@ impl EventLoop {
 						InboundRequest::PutRecord { source, record, .. } => {
 							metrics.count(MetricCounter::IncomingPutRecord).await;
 							match record {
-								Some(mut record) => {
-									let ttl = &self.event_loop_config.kad_record_ttl;
+								Some(rec) => {
+									let key = &rec.key;
+									trace!("Inbound PUT request record key: {key:?}. Source: {source:?}",);
 
-									// Set TTL for all incoming records
-									// TTL will be set to a lower value between the local TTL and incoming record TTL
-									record.expires = record.expires.min(ttl.expires());
-									_ = self.swarm.behaviour_mut().kademlia.store_mut().put(record);
+									_ = self.swarm.behaviour_mut().kademlia.store_mut().put(rec);
 								},
 								None => {
 									debug!("Received empty cell record from: {source:?}");
@@ -345,7 +348,7 @@ impl EventLoop {
 							return;
 						},
 					};
-					if protocol_version == self.event_loop_config.identity_data.protocol_version {
+					if protocol_version == self.identity_data.protocol_version {
 						// Add peer to routing table only if it's in Kademlia server mode
 						if incoming_peer_agent_version.kademlia_mode
 							== KademliaMode::Server.to_string()
@@ -406,19 +409,22 @@ impl EventLoop {
 			},
 			SwarmEvent::Behaviour(BehaviourEvent::AutoNat(event)) => match event {
 				autonat::Event::InboundProbe(e) => {
-					trace!("[AutoNat] Inbound Probe: {:#?}", e);
+					trace!("AutoNat Inbound Probe: {:#?}", e);
 				},
 				autonat::Event::OutboundProbe(e) => {
-					trace!("[AutoNat] Outbound Probe: {:#?}", e);
+					trace!("AutoNat Outbound Probe: {:#?}", e);
 				},
 				autonat::Event::StatusChanged { old, new } => {
-					debug!("[AutoNat] Old status: {:#?}. New status: {:#?}", old, new);
+					debug!(
+						"AutoNat Old status: {:#?}. AutoNat New status: {:#?}",
+						old, new
+					);
 					// check if went private or are private
 					// if so, create reservation request with relay
 					if new == NatStatus::Private || old == NatStatus::Private {
-						info!("[AutoNat] Autonat says we're still private.");
+						info!("Autonat says we're still private.");
 						// Fat clients should always be in Kademlia client mode, no need to do NAT traversal
-						if !self.event_loop_config.is_fat_client {
+						if !self.is_fat_client {
 							// select a relay, try to dial it
 							self.select_and_dial_relay();
 						}
@@ -446,16 +452,16 @@ impl EventLoop {
 			},
 			SwarmEvent::Behaviour(BehaviourEvent::Upnp(event)) => match event {
 				upnp::Event::NewExternalAddr(addr) => {
-					trace!("[UPnP] New external address: {addr}");
+					info!("New external address: {addr}");
 				},
 				upnp::Event::GatewayNotFound => {
-					trace!("[UPnP] Gateway does not support UPnP");
+					trace!("Gateway does not support UPnP");
 				},
 				upnp::Event::NonRoutableGateway => {
-					trace!("[UPnP] Gateway is not exposed directly to the public Internet, i.e. it itself has a private IP address.");
+					trace!("Gateway is not exposed directly to the public Internet, i.e. it itself has a private IP address.");
 				},
 				upnp::Event::ExpiredExternalAddr(addr) => {
-					trace!("[UPnP] Gateway address expired: {addr}");
+					trace!("Gateway address expired: {addr}");
 				},
 			},
 			swarm_event => {
@@ -483,12 +489,6 @@ impl EventLoop {
 					SwarmEvent::IncomingConnectionError { .. } => {
 						metrics.count(MetricCounter::IncomingConnectionError).await;
 					},
-					SwarmEvent::ExternalAddrConfirmed { address } => {
-						info!(
-							"External reachability confirmed on address: {}",
-							address.to_string()
-						);
-					},
 					SwarmEvent::ConnectionEstablished { peer_id, .. } => {
 						metrics.count(MetricCounter::ConnectionEstablished).await;
 						// Notify the connections we're waiting on that we've connected successfully
@@ -501,7 +501,7 @@ impl EventLoop {
 						metrics.count(MetricCounter::OutgoingConnectionError).await;
 
 						if let Some(peer_id) = peer_id {
-							// Notify the connections we're waiting on an error has occurred
+							// Notify the connections we're waiting on an error has occured
 							if let libp2p::swarm::DialError::WrongPeerId { .. } = &error {
 								if let Some(peer) =
 									self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id)
@@ -576,9 +576,12 @@ impl EventLoop {
 	}
 
 	fn select_and_dial_relay(&mut self) {
+		let mut cfg: RuntimeConfig = RuntimeConfig::default();
+		let opts = CliOpts::parse();
+		let _ = cfg.load_runtime_config(&opts);
+
 		// select a random relay from the list of known ones
 		self.relay.select_random();
-
 		// dial selected relay,
 		// so we don't wait on swarm to do it eventually
 		match self.swarm.dial(
@@ -589,6 +592,19 @@ impl EventLoop {
 		) {
 			Ok(_) => {
 				info!("Dialing Relay: {id:?} succeeded.", id = self.relay.id);
+				let data = AddressBookData {
+					peer_id: self.relay.id,
+					multiaddr: cfg.bootstraps,
+				};
+				let mut dic: HashMap<PeerId, Vec<MultiaddrConfig>> = HashMap::new();
+				dic.insert(data.peer_id, data.multiaddr);
+				let json_string = serde_json::to_string(&dic).unwrap();
+				let mut file = OpenOptions::new()
+					.append(true)
+					.open("AddressBook.json")
+					.expect("Cannot open file");
+				file.write_all(json_string.as_bytes())
+					.expect("address order booking failed");
 			},
 			Err(e) => {
 				// got an error while dialing,
@@ -647,7 +663,7 @@ impl EventLoop {
 					.await;
 			}
 
-			if self.event_loop_config.is_fat_client {
+			if self.is_fat_client {
 				// Remove local records for fat clients (memory optimization)
 				debug!("Pruning local records on fat client");
 				self.swarm.behaviour_mut().kademlia.remove_record(&key);

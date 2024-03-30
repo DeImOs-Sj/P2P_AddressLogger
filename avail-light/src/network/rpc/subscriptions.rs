@@ -1,6 +1,7 @@
 use avail_subxt::primitives::{grandpa::AuthorityId, Header};
 use codec::Encode;
 use color_eyre::{eyre::eyre, Result};
+use rocksdb::DB;
 use sp_core::{
 	blake2_256,
 	ed25519::{self, Public},
@@ -15,10 +16,9 @@ use tracing::{debug, info, trace};
 
 use super::{Client, Subscription};
 use crate::{
-	data::Database,
-	data::{FinalitySyncCheckpoint, Key},
+	data::store_finality_sync_checkpoint,
 	finality::{check_finality, ValidatorSet},
-	types::{GrandpaJustification, OptionBlockRange, State},
+	types::{FinalitySyncCheckpoint, GrandpaJustification, OptionBlockRange, State},
 	utils::filter_auth_set_changes,
 };
 
@@ -38,18 +38,18 @@ struct BlockData {
 	last_finalized_block_header: Option<Header>,
 }
 
-pub struct SubscriptionLoop<T: Database> {
+pub struct SubscriptionLoop {
 	rpc_client: Client,
 	event_sender: Sender<Event>,
 	state: Arc<Mutex<State>>,
-	db: T,
+	db: Arc<DB>,
 	block_data: BlockData,
 }
 
-impl<T: Database> SubscriptionLoop<T> {
+impl SubscriptionLoop {
 	pub async fn new(
 		state: Arc<Mutex<State>>,
-		db: T,
+		db: Arc<DB>,
 		rpc_client: Client,
 		event_sender: Sender<Event>,
 	) -> Result<Self> {
@@ -186,16 +186,15 @@ impl<T: Database> SubscriptionLoop<T> {
 				// store Finality Checkpoint if finality is synced
 				if finality_synced {
 					info!("Storing finality checkpoint at block {}", header.number);
-					self.db
-						.put(
-							Key::FinalitySyncCheckpoint,
-							FinalitySyncCheckpoint {
-								set_id: self.block_data.current_valset.set_id,
-								number: header.number,
-								validator_set: self.block_data.current_valset.validator_set.clone(),
-							},
-						)
-						.unwrap();
+					store_finality_sync_checkpoint(
+						self.db.clone(),
+						FinalitySyncCheckpoint {
+							set_id: self.block_data.current_valset.set_id,
+							number: header.number,
+							validator_set: self.block_data.current_valset.validator_set.clone(),
+						},
+					)
+					.unwrap();
 				}
 
 				// try and get get all the skipped blocks, if they exist

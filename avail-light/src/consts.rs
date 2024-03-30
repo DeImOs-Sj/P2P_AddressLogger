@@ -1,9 +1,21 @@
 //! Column family names and other constants.
 
+/// Column family for confidence factor
+pub const CONFIDENCE_FACTOR_CF: &str = "avail_light_confidence_factor_cf";
+
+/// Column family for block header
+pub const BLOCK_HEADER_CF: &str = "avail_light_block_header_cf";
+
+/// Column family for app data
+pub const APP_DATA_CF: &str = "avail_light_app_data_cf";
+
+/// Column family for state
+pub const STATE_CF: &str = "avail_light_state_cf";
+
 /// Expected network Node versions. First version should be the main supported version,
 /// while all subsequent versions should be for backward compatibility/fallback/future-proofing versions.
-pub const EXPECTED_SYSTEM_VERSION: &[&str] = &["2.0"];
-pub const EXPECTED_SPEC_NAME: &str = "avail";
+pub const EXPECTED_SYSTEM_VERSION: &[&str] = &["1.10", "1.11"];
+pub const EXPECTED_SPEC_NAME: &str = "data-avail";
 
 #[derive(Clone)]
 pub struct ExpectedNodeVariant {
