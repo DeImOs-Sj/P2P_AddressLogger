@@ -1,8 +1,22 @@
-# React + Vite
+## P2P Address Logger: Avail DA Network Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This project implements a P2P Address Logger on Avail DA, a decentralized network technology. It tracks and logs all peers that connect to the network, creating a map of the connected devices.
 
-Currently, two official plugins are available:
+**Additional Features:**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+* **Potential for Network Analysis:** By storing historical data, the logger can be used to analyze network activity and identify patterns in peer connections.
+* **Privacy Considerations:** (Describe how the project handles user privacy. Does it anonymize addresses? Can users opt-out of being logged?)
+
+**Project Setup**
+
+1. **Install Avail CLI:**
+
+   ```bash
+   npm i -g @availproject/cli
+   ```
+
+2. **and Run**
+
+    ```
+    avail lc up
+    ```
