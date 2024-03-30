@@ -1,0 +1,47 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+builds:
+  - main: ./cmd/palomad
+    binary: palomad
+    tags:
+      - netgo
+      - gcc
+      - ledger
+    ldflags:
+      - -s -w
+      - -X github.com/cosmos/cosmos-sdk/version.Name=paloma
+      - -X github.com/cosmos/cosmos-sdk/version.AppName=palomad
+      - -X github.com/cosmos/cosmos-sdk/version.Version={{ .Tag }}
+      - -X github.com/cosmos/cosmos-sdk/version.Commit={{ .FullCommit }}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+
+archives:
+  - name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^third_party_proto:'
+      - '^testutil:'
+      - '^scripts:'
+      - '^docs:'

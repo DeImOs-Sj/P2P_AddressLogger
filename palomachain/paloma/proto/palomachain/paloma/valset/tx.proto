@@ -1,0 +1,39 @@
+syntax = "proto3";
+package palomachain.paloma.valset;
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+
+import "palomachain/paloma/valset/snapshot.proto";
+import "palomachain/paloma/valset/common.proto";
+
+option go_package = "github.com/palomachain/paloma/x/valset/types";
+
+// Msg defines the Msg service.
+service Msg {
+  rpc AddExternalChainInfoForValidator(MsgAddExternalChainInfoForValidator)
+      returns (MsgAddExternalChainInfoForValidatorResponse);
+  rpc KeepAlive(MsgKeepAlive) returns (MsgKeepAliveResponse);
+}
+
+message MsgAddExternalChainInfoForValidator {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  repeated ExternalChainInfo chainInfos = 2;
+  palomachain.paloma.valset.MsgMetadata metadata = 3
+      [ (gogoproto.nullable) = false ];
+}
+
+message MsgAddExternalChainInfoForValidatorResponse {}
+
+message MsgKeepAlive {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  string pigeonVersion = 2;
+  palomachain.paloma.valset.MsgMetadata metadata = 3
+      [ (gogoproto.nullable) = false ];
+}
+
+message MsgKeepAliveResponse {}

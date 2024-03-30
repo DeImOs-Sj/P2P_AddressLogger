@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package palomachain.paloma.evm;
+
+import "palomachain/paloma/evm/relay_weights.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/palomachain/paloma/x/evm/types";
+
+message ChainInfo {
+  uint64 id = 9999;
+
+  string chainReferenceID = 1;
+
+  uint64 chainID = 2;
+
+  bytes smartContractUniqueID = 3;
+
+  string smartContractAddr = 4;
+
+  // used to verify by pigeons if they are at the correct chain
+  uint64 referenceBlockHeight = 5;
+  string referenceBlockHash = 6;
+
+  string abi = 7;
+  bytes bytecode = 8;
+  bytes constructorInput = 9;
+  enum Status {
+    IN_PROPOSAL = 0;
+    ACTIVE = 1;
+    WAITING_FOR_EVIDENCE = 2;
+  }
+  Status status = 10;
+
+  uint64 activeSmartContractID = 11;
+
+  string minOnChainBalance = 12;
+
+  RelayWeights relayWeights = 13;
+}
+
+message SmartContract {
+  uint64 id = 1;
+  string abiJSON = 2;
+  bytes bytecode = 3;
+}
+
+message SmartContractDeployment {
+  // which smart contract is getting deployed
+  uint64 smartContractID = 1;
+
+  // to which chain info the smart contract is getting deployed to
+  string chainReferenceID = 2;
+
+  // application level ID which uniquely identifies a deployed smart contract.
+  // It's used if we have multiple smart contracts deployed on a same EVM so
+  // that the contract can figure out if the message was actually sent for them.
+  // (message includes the unique id and smart contract has simple logic to
+  // disallow those that to not match)
+  bytes uniqueID = 3;
+
+  // Since we need to update ERC20 token ownership to the new compass contract
+  // the deployment process is split into three steps:
+  // 1. Deploy the contract
+  // 2. Transfer ERC20 token ownership to the new contract
+  // 3. Set the new contract as current in Paloma
+  // The status field gives information on the current state of the deployment.
+  enum Status {
+    PENDING = 0;
+    IN_FLIGHT = 1;
+    WAITING_FOR_ERC20_OWNERSHIP_TRANSFER = 2;
+  }
+  Status status = 4;
+
+  message ERC20Transfer {
+    // Paloma denom of the ERC20 token
+    string denom = 1;
+    // Address of the ERC20 token on the target chain
+    string erc20 = 2;
+    // Message ID of the logic call message created in charge of updating the
+    // ownership.
+    uint64 msgID = 3;
+    enum Status {
+      // The transfer is still ongoing.
+      PENDING = 0;
+      // The transfer has finished successfully.
+      OK = 1;
+      // The transfer has failed and needs to be retried.
+      FAIL = 2;
+    }
+    // Current status of the transfer.
+    Status status = 4;
+  }
+
+  // A set of transfer records for each ERC20 token that
+  // needs the updated smart contract address before Paloma
+  // can switch to the new contract.
+  repeated ERC20Transfer erc20transfers = 5 [ (gogoproto.nullable) = false ];
+
+  // Once deployed, this contains the address of the contract
+  // on the remote chain.
+  string newSmartContractAddress = 6;
+}

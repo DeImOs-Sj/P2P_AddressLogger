@@ -1,0 +1,10 @@
+syntax = "proto3";
+package palomachain.paloma.paloma;
+
+import "gogoproto/gogo.proto";
+import "palomachain/paloma/paloma/params.proto";
+
+option go_package = "github.com/palomachain/paloma/x/paloma/types";
+
+// GenesisState defines the paloma module's genesis state.
+message GenesisState { Params params = 1 [ (gogoproto.nullable) = false ]; }

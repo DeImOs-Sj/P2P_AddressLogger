@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
+import "google/protobuf/any.proto";
+import "palomachain/paloma/valset/common.proto";
+package palomachain.paloma.consensus;
+
+option go_package = "github.com/palomachain/paloma/x/consensus/types";
+
+// Msg defines the Msg service.
+service Msg {
+  rpc AddMessagesSignatures(MsgAddMessagesSignatures)
+      returns (MsgAddMessagesSignaturesResponse);
+  rpc AddEvidence(MsgAddEvidence) returns (MsgAddEvidenceResponse);
+  rpc SetPublicAccessData(MsgSetPublicAccessData)
+      returns (MsgSetPublicAccessDataResponse);
+  rpc SetErrorData(MsgSetErrorData) returns (MsgSetErrorDataResponse);
+}
+
+message MsgAddMessagesSignatures {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  repeated ConsensusMessageSignature signedMessages = 2;
+  palomachain.paloma.valset.MsgMetadata metadata = 3
+      [ (gogoproto.nullable) = false ];
+}
+
+message ConsensusMessageSignature {
+  uint64 id = 1;
+  string queueTypeName = 2;
+  bytes signature = 3;
+  string signedByAddress = 5;
+}
+
+message MsgAddMessagesSignaturesResponse {}
+
+message MsgAddEvidence {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  google.protobuf.Any proof = 2;
+  uint64 messageID = 3;
+  string queueTypeName = 4;
+  palomachain.paloma.valset.MsgMetadata metadata = 5
+      [ (gogoproto.nullable) = false ];
+}
+
+message MsgAddEvidenceResponse {}
+
+message MsgSetPublicAccessData {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  uint64 messageID = 2;
+  string queueTypeName = 3;
+  bytes data = 4;
+  palomachain.paloma.valset.MsgMetadata metadata = 5
+      [ (gogoproto.nullable) = false ];
+}
+
+message MsgSetPublicAccessDataResponse {}
+
+message MsgSetErrorData {
+  option (cosmos.msg.v1.signer) = "metadata";
+  reserved 1;  
+  reserved "creator";  
+  uint64 messageID = 2;
+  string queueTypeName = 3;
+  bytes data = 4;
+  palomachain.paloma.valset.MsgMetadata metadata = 5
+      [ (gogoproto.nullable) = false ];
+}
+
+message MsgSetErrorDataResponse {}

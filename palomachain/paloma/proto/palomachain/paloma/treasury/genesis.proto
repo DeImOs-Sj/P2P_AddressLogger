@@ -1,0 +1,14 @@
+syntax = "proto3";
+package palomachain.paloma.treasury;
+
+import "gogoproto/gogo.proto";
+import "palomachain/paloma/treasury/params.proto";
+import "palomachain/paloma/treasury/fees.proto";
+
+option go_package = "github.com/palomachain/paloma/x/treasury/types";
+
+// GenesisState defines the treasury module's genesis state.
+message GenesisState {
+  Params params = 1 [ (gogoproto.nullable) = false ];
+  Fees treasuryFees = 2;
+}

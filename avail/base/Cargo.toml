@@ -1,0 +1,30 @@
+[package]
+name = "avail-base"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Our crates
+avail-core = { git = "https://github.com/availproject/avail-core", tag = "node-v1.9.0.0", default-features = false, features = ["runtime"] }
+kate = { git = "https://github.com/availproject/avail-core", tag = "node-v1.9.0.0", default-features = false }
+
+# Substrate related
+substrate-prometheus-endpoint = {  version = "0.10.0-dev", optional = true }
+sp-std = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v1.0.0", default-features = false }
+
+# 3rd-party
+log = "0.4.17"
+once_cell = { version = "1.17.1", optional = true }
+
+
+[features]
+default = [ "std" ]
+std = [
+	"avail-core/std",
+	"kate/std",
+	"once_cell",
+	"sp-std/std",
+	"substrate-prometheus-endpoint",
+]

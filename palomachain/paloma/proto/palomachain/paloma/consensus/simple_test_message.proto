@@ -1,0 +1,15 @@
+syntax = "proto3";
+package palomachain.paloma.consensus;
+
+option go_package = "github.com/palomachain/paloma/x/consensus/types";
+
+message SimpleMessage {
+  string sender = 1;
+  string hello = 2;
+  string world = 3;
+}
+
+message EvenSimplerMessage {
+  string sender = 1;
+  string boo = 2;
+}

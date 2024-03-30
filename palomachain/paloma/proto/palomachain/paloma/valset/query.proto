@@ -1,0 +1,114 @@
+syntax = "proto3";
+package palomachain.paloma.valset;
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "palomachain/paloma/valset/params.proto";
+import "palomachain/paloma/valset/snapshot.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/palomachain/paloma/x/valset/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Parameters queries the parameters of the module.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/palomachain/paloma/valset/params";
+  }
+  // Queries a list of ValidatorInfo items.
+  rpc ValidatorInfo(QueryValidatorInfoRequest)
+      returns (QueryValidatorInfoResponse) {
+    option (google.api.http).get =
+        "/palomachain/paloma/valset/validator_info/{valAddr}";
+  }
+
+  // Queries a list of GetSnapshotByID items.
+  rpc GetSnapshotByID(QueryGetSnapshotByIDRequest)
+      returns (QueryGetSnapshotByIDResponse) {
+    option (google.api.http).get =
+        "/palomachain/paloma/valset/get_snapshot_by_id/{snapshotId}";
+  }
+
+  // Queries the most recent published snapshot for a chain.
+  rpc GetLatestPublishedSnapshot(QueryGetLatestPublishedSnapshotRequest)
+      returns (QueryGetLatestPublishedSnapshotResponse) {}
+
+  // Queries a list of GetValidatorAliveUntil items.
+  rpc GetValidatorAliveUntil(QueryGetValidatorAliveUntilRequest)
+      returns (QueryGetValidatorAliveUntilResponse) {
+    option (google.api.http).get =
+        "/palomachain/paloma/valset/get_validator_alive_until";
+  }
+
+  // Queries a list of GetValidatorJailReason items.
+  rpc GetValidatorJailReason(QueryGetValidatorJailReasonRequest)
+      returns (QueryGetValidatorJailReasonResponse) {
+    option (google.api.http).get =
+        "/palomachain/paloma/valset/get_validator_jail_reason";
+  }
+
+  // Queries a list of GetAlivePigeons items.
+  rpc GetAlivePigeons(QueryGetAlivePigeonsRequest)
+      returns (QueryGetAlivePigeonsResponse) {
+    option (google.api.http).get =
+        "/palomachain/paloma/valset/get_alive_pigeons";
+  }
+}
+
+// QueryParamsRequest is request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params holds all the parameters of this module.
+  Params params = 1 [ (gogoproto.nullable) = false ];
+}
+
+message QueryValidatorInfoRequest { string valAddr = 1; }
+
+message QueryValidatorInfoResponse {
+  repeated ExternalChainInfo chainInfos = 1;
+}
+
+message QueryGetSnapshotByIDRequest { uint64 snapshotId = 1; }
+
+message QueryGetSnapshotByIDResponse { Snapshot snapshot = 1; }
+
+message QueryGetLatestPublishedSnapshotRequest { string chainReferenceID = 1; }
+
+message QueryGetLatestPublishedSnapshotResponse { Snapshot snapshot = 1; }
+
+message QueryGetValidatorAliveUntilRequest {
+  bytes valAddress = 1 [ (gogoproto.casttype) =
+                             "github.com/cosmos/cosmos-sdk/types.ValAddress" ];
+}
+
+message QueryGetValidatorAliveUntilResponse {
+  reserved 1; // deprecated
+
+  int64 aliveUntilBlockHeight = 2;
+}
+
+message QueryGetValidatorJailReasonRequest {
+  bytes valAddress = 1 [ (gogoproto.casttype) =
+                             "github.com/cosmos/cosmos-sdk/types.ValAddress" ];
+}
+
+message QueryGetValidatorJailReasonResponse { string reason = 1; }
+
+message QueryGetAlivePigeonsRequest {}
+
+message QueryGetAlivePigeonsResponse {
+  message ValidatorAlive {
+    bytes valAddress = 1
+        [ (gogoproto.casttype) =
+              "github.com/cosmos/cosmos-sdk/types.ValAddress" ];
+    reserved 2; // deprecated
+    reserved 3; // deprecated
+    string error = 4;
+    int64 aliveUntilBlockHeight = 5;
+  }
+
+  repeated ValidatorAlive aliveValidators = 1;
+}

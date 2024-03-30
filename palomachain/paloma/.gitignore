@@ -1,0 +1,10 @@
+vue/node_modules
+vue/dist
+release/
+.idea/
+.vscode/
+.DS_Store
+build/
+dist/
+.scratch/
+tests/integration/evm/keeper/testdata
