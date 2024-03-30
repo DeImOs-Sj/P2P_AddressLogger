@@ -7,7 +7,7 @@ This project implements a P2P Address Logger on Avail DA, a decentralized networ
 * **Potential for Network Analysis:** By storing historical data, the logger can be used to analyze network activity and identify patterns in peer connections.
 * **Privacy Considerations:** (Describe how the project handles user privacy. Does it anonymize addresses? Can users opt-out of being logged?)
 
-**Project Setup**
+**Project Setup:**
 
 1. **Terminal 1: LC Node 1**
 
