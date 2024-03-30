@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 import {
   Activity,
@@ -46,6 +48,44 @@ import {
 } from "@/components/ui/table"
 
 export function Dashboard() {
+  const [blockData, setBlockData] = useState(null);
+  const [mode, setMode] = useState('');
+  const [loading, setLoading] = useState(true);
+
+              // console.log(blockData)
+
+  const [error, setError] = useState(null);
+
+
+
+   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:7000/v1/latest_block');
+        setBlockData(response.data);
+      } catch (error) {
+        setError(error);
+      }
+    };
+
+    fetchData();
+   }, []);
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:7000/v1/mode');
+        setMode(response.data);
+        setLoading(false);
+      } catch (error) {
+        setError('Error fetching mode data');
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+  
   return (
     <div className="flex min-h-screen w-full flex-col">
     
@@ -54,29 +94,25 @@ export function Dashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Total Nodes
+                Latest Block Data
               </CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">452</div>
-              <p className="text-xs text-muted-foreground">
-                Computational Advancements +20.1% from last month
-              </p>
+              {/* <div className="text-2xl font-bold">{blockData.latest_block}</div> */}
+        
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Validators Nodes
+                Mode
               </CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+50</div>
-              <p className="text-xs text-muted-foreground">
-                +18% from last month
-              </p>
+              <div className="text-2xl font-bold">{mode}</div>
+
             </CardContent>
           </Card>
           <Card>

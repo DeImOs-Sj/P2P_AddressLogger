@@ -3,6 +3,7 @@ import { Dashboard } from "./components/dashboard/Dashboard"
 import {Routes,Route} from "react-router-dom"
 import Chart from "./components/CreateChart/Chart"
 import Navbar from "./components/Navbar/Navbar"
+import LatestBlock from "./components/LatestBlock/Lastest"
 function App() {
    // Sample peer data
   const chartData = [
@@ -24,7 +25,7 @@ function App() {
   return (
     <>
       <Navbar/>
-     <Routes> 
+     <Routes>
 
         <Route path="/" element={<Dashboard />} />
                 <Route
@@ -42,10 +43,13 @@ function App() {
                 {/* <Route path="/subregions" element={<SubRegions />} /> */}
 
        {/*  <Route path="/subregions" element={<SubRegions />} /> */}
-      </Routes> 
+      </Routes>
 
 
-   </>
+     </>
+    // <>
+    //   <LatestBlock/>
+    // </>
   )
 }
 
