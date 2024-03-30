@@ -39,7 +39,7 @@ This project implements a P2P Address Logger on Avail DA, a decentralized networ
    ```
 
     **SnapShots**
-   ![Creating_peerID](./snapshots/2.jpg)
+   ![Creating_peerID](snapshots/2.jpeg)
    **Getting peer Ids of *Avail* Light Nodes**
 
 
