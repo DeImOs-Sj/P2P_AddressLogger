@@ -49,6 +49,9 @@ import {
 
 export function Dashboard() {
   const [blockData, setBlockData] = useState(null);
+    const [versionData, setVersionData] = useState({});
+  const [statusData, setStatusData] = useState({});
+
   const [mode, setMode] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +60,7 @@ export function Dashboard() {
   const [error, setError] = useState(null);
 
 
-
+//latest data
    useEffect(() => {
     const fetchData = async () => {
       try {
@@ -70,7 +73,7 @@ export function Dashboard() {
 
     fetchData();
    }, []);
-  
+  //mode
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -85,6 +88,38 @@ export function Dashboard() {
 
     fetchData();
   }, []);
+  //v2 version 
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:7000/v2/version');
+        setVersionData(response.data);
+        setLoading(false);
+      } catch (error) {
+        setError('Error fetching version data');
+        setLoading(false);
+      }
+    };
+
+    fetchVersion();
+  }, []);
+  
+  //v2 status 
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:7000/v2/status');
+        const { modes, genesis, network } = response.data;
+        setStatusData({ modes, genesis, network });
+        setLoading(false);
+      } catch (error) {
+        setError('Error fetching status data');
+        setLoading(false);
+      }
+    };
+
+    fetchStatus();
+  }, []);
   
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -94,49 +129,59 @@ export function Dashboard() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Latest Block Data
+                V1 Latest Block Number 
               </CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              {/* <div className="text-2xl font-bold">{blockData.latest_block}</div> */}
+              <div className="text-2xl font-bold">607658</div>
+              <p className="text-xs text-muted-foreground">
+The latest block processed by light client.
+              </p>
         
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Mode
+                V1 Mode
               </CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mode}</div>
+              <div className="text-2xl font-bold">{ mode}</div>
+ <p className="text-xs text-muted-foreground">
+Retrieves the operating mode of the Avail light client. The Light client can operate in two different modes, LightClient or AppClient
 
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Providers Benefited</CardTitle>
+              <CardTitle className="text-sm font-medium">V2 Version </CardTitle>
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+12,234</div>
+
+              <div className="text-2xl font-bold">{versionData.version}</div>
               <p className="text-xs text-muted-foreground">
-                +19% from last month
+                Gets the version of the light client binary, and the version of the compatible network.
+
+
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Now</CardTitle>
+              <CardTitle className="text-sm font-medium">V2 Status</CardTitle>
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+573</div>
-              <p className="text-xs text-muted-foreground">
-                +201 since last hour
-              </p>
+              <div className="text-2xl font-bold">Modes: {statusData.modes}</div>
+              <p className="text-xs text-muted-foreground ">Genesis Hash:0x6f09966420b2608d1947ccfb0f
+                2a362450d1fc7fd902c29b67c906eaa965a7ae</p>
+              
+              <p className='text-xs text-muted-foreground '>Network: {statusData.network}</p>
             </CardContent>
           </Card>
         </div>
@@ -144,9 +189,9 @@ export function Dashboard() {
           <Card className="xl:col-span-2">
             <CardHeader className="flex flex-row items-center">
               <div className="grid gap-2">
-                <CardTitle>Peers Connected</CardTitle>
+                <CardTitle>Address Book</CardTitle>
                 <CardDescription>
-                  Recent peers connected to your node.
+                  Recent Peers Listed on Address Book.
                 </CardDescription>
               </div>
               <Button asChild size="sm" className="ml-auto gap-1">
@@ -280,83 +325,62 @@ export function Dashboard() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Nodes</CardTitle>
+              <CardTitle>Latest Block Information</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-8">
               <div className="flex items-center gap-4">
-                <Avatar className="hidden h-9 w-9 sm:flex">
-                  <AvatarImage src="/avatars/01.png" alt="Avatar" />
-                  <AvatarFallback>OM</AvatarFallback>
-                </Avatar>
+              
                 <div className="grid gap-1">
                   <p className="text-sm font-medium leading-none">
-                    Olivia Martin
+                    Block Number
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    olivia.martin@email.com
-                  </p>
+607658                  </p>
                 </div>
-                <div className="ml-auto font-medium">+$1,999.00</div>
               </div>
               <div className="flex items-center gap-4">
-                <Avatar className="hidden h-9 w-9 sm:flex">
-                  <AvatarImage src="/avatars/02.png" alt="Avatar" />
-                  <AvatarFallback>JL</AvatarFallback>
-                </Avatar>
+               
                 <div className="grid gap-1">
                   <p className="text-sm font-medium leading-none">
-                    Jackson Lee
+                    Hash
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    jackson.lee@email.com
-                  </p>
+                    0xa91fe3282b15875e265ebe297c7d94184e6301c125f1449
+                    ad50699c822789b9c                  </p>
                 </div>
-                <div className="ml-auto font-medium">+$39.00</div>
               </div>
               <div className="flex items-center gap-4">
-                <Avatar className="hidden h-9 w-9 sm:flex">
-                  <AvatarImage src="/avatars/03.png" alt="Avatar" />
-                  <AvatarFallback>IN</AvatarFallback>
-                </Avatar>
+                
                 <div className="grid gap-1">
                   <p className="text-sm font-medium leading-none">
-                    Isabella Nguyen
+                    Parent_Hash
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    isabella.nguyen@email.com
-                  </p>
+                    0x34456e054d7c5f943736e35ee285ab4ef37bc30705fa5c
+                    e5cddc42bd68a3f667                  </p>
                 </div>
-                <div className="ml-auto font-medium">+$299.00</div>
               </div>
               <div className="flex items-center gap-4">
-                <Avatar className="hidden h-9 w-9 sm:flex">
-                  <AvatarImage src="/avatars/04.png" alt="Avatar" />
-                  <AvatarFallback>WK</AvatarFallback>
-                </Avatar>
+               
                 <div className="grid gap-1">
                   <p className="text-sm font-medium leading-none">
-                    William Kim
+                    State_Root
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    will@email.com
+                    0x804187e7b3805b421249c4aed14bf423b9b737328824f7c8c9a9ceff1ba63093
                   </p>
                 </div>
-                <div className="ml-auto font-medium">+$99.00</div>
               </div>
               <div className="flex items-center gap-4">
-                <Avatar className="hidden h-9 w-9 sm:flex">
-                  <AvatarImage src="/avatars/05.png" alt="Avatar" />
-                  <AvatarFallback>SD</AvatarFallback>
-                </Avatar>
+                
                 <div className="grid gap-1">
                   <p className="text-sm font-medium leading-none">
-                    Sofia Davis
+                    Extrinsics_Root
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    sofia.davis@email.com
+                    0x0e56c8d4514b91d42ab14c6ed4090a423d2dc4741e104309b7757dfe1a407774
                   </p>
                 </div>
-                <div className="ml-auto font-medium">+$39.00</div>
               </div>
             </CardContent>
           </Card>
