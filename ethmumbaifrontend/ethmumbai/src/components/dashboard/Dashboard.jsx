@@ -54,7 +54,9 @@ export function Dashboard() {
 
   const [mode, setMode] = useState('');
   const [loading, setLoading] = useState(true);
+    const [addressBookData, setAddressBookData] = useState([]);
 
+console.log(addressBookData)
               // console.log(blockData)
 
   const [error, setError] = useState(null);
@@ -119,6 +121,30 @@ export function Dashboard() {
     };
 
     fetchStatus();
+  }, []);
+
+  //address book 
+  useEffect(() => {
+    const fetchAddressBook = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:8000/v1/address_book');
+        const data = response.data;
+        const jsonData = JSON.parse("[" + data.replace(/}{/g, "},{") + "]");
+        const filteredData = jsonData.map(obj => {
+          const peerID = Object.keys(obj)[0];
+          const multiaddr = obj[peerID][0][1];
+          return { peerID, multiaddr };
+        });
+        setAddressBookData(filteredData);
+        console.log(filteredData);
+        setLoading(false);
+      } catch (error) {
+        setError('Error fetching address book data');
+        setLoading(false);
+      }
+    };
+
+    fetchAddressBook();
   }, []);
   
   return (
@@ -190,135 +216,41 @@ Retrieves the operating mode of the Avail light client. The Light client can ope
             <CardHeader className="flex flex-row items-center">
               <div className="grid gap-2">
                 <CardTitle>Address Book</CardTitle>
-                <CardDescription>
-                  Recent Peers Listed on Address Book.
-                </CardDescription>
+        <CardDescription>
+  {/* Recent Peers Listed on Address Book.
+{posts.length && posts.map((post, index) => (
+    <li key={index}>
+      <p>Name: {entry.name}</p>
+      <p>Email: {entry.email}</p>
+    </li>
+  ))} */}
+</CardDescription>
+
               </div>
-              <Button asChild size="sm" className="ml-auto gap-1">
-                <Link href="#">
+      <Button asChild size="sm" className="ml-auto gap-1">
+                <Link to="#">
                   View All
                   <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </Button>
             </CardHeader>
             <CardContent>
-              <Table>
+             <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Peer Public key </TableHead>
-                    <TableHead className="hidden xl:table-column">
-                      Type
-                    </TableHead>
-                    <TableHead className="hidden xl:table-column">
-                      Status
-                    </TableHead>
-                    <TableHead className="hidden xl:table-column">
-                      Date
-                    </TableHead>
-                    <TableHead className="text-right">PeerId</TableHead>
+                    <TableHead className="text-right">Multiaddr</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">f5c6ba6bc3f516767c2aca7a0726b5199a2f656ae78a2b95acecd828ce2</div>
-                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
-                        liam@example.com
-                      </div> */}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      Sale
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      <Badge className="text-xs" variant="outline">
-                        Approved
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
-                      2023-06-23
-                    </TableCell>
-                    <TableCell className="text-right">1</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">a1c6ba363gdfc3f516763v2aca7a0726b5199a2f656ae78a2b95acecd82</div>
-                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
-                        olivia@example.com
-                      </div> */}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      Refund
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      <Badge className="text-xs" variant="outline">
-                        Declined
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
-                      2023-06-24
-                    </TableCell>
-                    <TableCell className="text-right">2</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">wo4iruj0wejf0982u37a0726b519fsdsdf9a2f656asdfdsfe78a2b95ace</div>
-                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
-                        noah@example.com
-                      </div> */}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      Subscription
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      <Badge className="text-xs" variant="outline">
-                        Approved
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
-                      2023-06-25
-                    </TableCell>
-                    <TableCell className="text-right">3</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">oi20fcmow37a0726b519fsdsdf9a2f656asdsfe78fsfagowspfmm2b95</div>
-                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
-                        emma@example.com
-                      </div> */}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      Sale
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      <Badge className="text-xs" variant="outline">
-                        Approved
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
-                      2023-06-26
-                    </TableCell>
-                    <TableCell className="text-right">4</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">eiposejp3qr0mp6b519fsdsdf9a2f656asdsfe78fsfagowspfmm2b3r</div>
-                      {/* <div className="hidden text-sm text-muted-foreground md:inline">
-                        liam@example.com
-                      </div> */}
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      Sale
-                    </TableCell>
-                    <TableCell className="hidden xl:table-column">
-                      <Badge className="text-xs" variant="outline">
-                        Approved
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell lg:hidden xl:table-column">
-                      2023-06-27
-                    </TableCell>
-                    <TableCell className="text-right">5</TableCell>
-                  </TableRow>
+                  {addressBookData.map((entry, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <div className="font-medium">{entry.peerID}</div>
+                      </TableCell>
+                      <TableCell className="text-right">{entry.multiaddr}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>

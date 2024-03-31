@@ -48,8 +48,9 @@ This helps in improving the overall efficiency of the avail network.
 
    We first start up firing up one Light-client on the Goldberg test network. Then we query the coming data in the Light-client from all the Peers to make our address book. The address book has all the PeerIDs, the multiAddresses.
 
-   <h1>SnapShots</h1>
+   <h1>Getting peer Ids of _Avail_ Light Nodes</h1>
 
    <img src="readmeImages/2.jpeg" alt="Creating_peerID" width="800px">
 
-   **Getting peer Ids of _Avail_ Light Nodes**
+   <h1>UserInterFace For Our Application</h1>
+   <img src="readmeImages/ui.png" alt="Creating_peerID" width="800px">
